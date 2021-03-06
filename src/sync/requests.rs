@@ -22,6 +22,7 @@ pub trait SlackWebRequestSender {
 
 #[cfg(feature = "reqwest_blocking")]
 mod reqwest_support {
+
     pub use self::reqwest::Error;
     use reqwest_ as reqwest;
     use std::borrow::Borrow;
@@ -43,9 +44,24 @@ mod reqwest_support {
         {
             let mut url = reqwest::Url::parse(method_url.as_ref()).expect("Unable to parse url");
 
-            url.query_pairs_mut().extend_pairs(params);
+            let (mut token, not_token): (Vec<(String, String)>, Vec<(String, String)>) = 
+                params
+                    .into_iter()
+                    .map(|kv| {
+                        let (k, v) = kv.borrow();
+                        (k.as_ref().to_string(), v.as_ref().to_string())
+                    })
+                    .partition(|(k, _)| k == "token");
 
-            Ok(self.get(url).send()?.text()?)
+            url.query_pairs_mut().extend_pairs(not_token);
+            let mut req = self.get(url);
+
+            if token.len() >= 1 {
+                let token = token.pop().unwrap().1;
+                req = req.header(reqwest::header::AUTHORIZATION, format!("Bearer {}", token));
+            }
+
+            Ok(req.send()?.text()?)
         }
     }
 
